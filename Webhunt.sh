@@ -1,71 +1,52 @@
-import os
-import re
-import time
-import sys
+#!/bin/bash
 
-# Patterns to search
-patterns = {
-    "discord_webhook": r"https:\/\/discord(?:app)?\.com\/api\/webhooks\/[^\s'\"]+",
-    "slack_webhook": r"https:\/\/hooks\.slack\.com\/services\/[^\s'\"]+",
-    "dot_pf": r"\b[\w\/\\.-]+\.pf\b",
-    "webhook_generic": r"\bwebhook\b",
-    "hook_url": r"\bhookurl\b",
-    "webhook_path": r"\bwebhook_path\b"
+# Define patterns
+patterns=(
+    'https:\/\/discord[a-z]*\.com\/api\/webhooks\/[^[:space:]\"]\+'
+    'https:\/\/hooks\.slack\.com\/services\/[^[:space:]\"]\+'
+    '\.pf\b'
+    '\bwebhook\b'
+    '\bhookurl\b'
+    '\bwebhook_path\b'
+)
+
+# Start time
+start_time=$(date +%s)
+
+# Collect all files (excluding binaries)
+mapfile -t files < <(find . -type f ! -name "*.png" ! -name "*.jpg" ! -name "*.gif" ! -name "*.jpeg" ! -name "*.webp" ! -name "*.exe" ! -name "*.bin" ! -name "*.so" ! -name "*.dll")
+
+total_patterns=${#patterns[@]}
+results=()
+
+# Function to show timer
+show_progress() {
+    local count=$1
+    local now=$(date +%s)
+    local elapsed=$((now - start_time))
+    local mins=$((elapsed / 60))
+    local secs=$((elapsed % 60))
+    printf "\r%d out of %d patterns checked | Time: %02d:%02d" "$count" "$total_patterns" "$mins" "$secs"
 }
 
-# Precompile regexes
-compiled_patterns = [(name, re.compile(pat, re.IGNORECASE)) for name, pat in patterns.items()]
-total_patterns = len(compiled_patterns)
+# Search logic
+for i in "${!patterns[@]}"; do
+    pattern="${patterns[$i]}"
+    for file in "${files[@]}"; do
+        if [[ -r "$file" ]]; then
+            matches=$(grep -niE "$pattern" "$file" 2>/dev/null)
+            if [[ -n "$matches" ]]; then
+                while IFS= read -r line; do
+                    results+=("$file:$line")
+                done <<< "$matches"
+            fi
+        fi
+    done
+    show_progress $((i + 1))
+done
 
-# Track results
-results = []
+# Newline before output
+echo
 
-# Start timer
-start_time = time.time()
-
-# Search through files
-def search_file(filepath):
-    try:
-        with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
-            lines = f.readlines()
-            for line_num, line in enumerate(lines, 1):
-                for _, pattern in compiled_patterns:
-                    if pattern.search(line):
-                        results.append((filepath, line_num, line.strip()))
-                        break  # Don't need to test more patterns once matched
-    except Exception:
-        pass  # Ignore unreadable files
-
-# Get all text/code files recursively
-def list_files(base_dir='.'):
-    for root, _, files in os.walk(base_dir):
-        for name in files:
-            path = os.path.join(root, name)
-            yield path
-
-# Main loop
-file_list = list(list_files())
-num_files = len(file_list)
-for idx, (pattern_name, pattern) in enumerate(compiled_patterns, 1):
-    checked_files = 0
-    for file_path in file_list:
-        search_file(file_path)
-        checked_files += 1
-
-        # Update progress
-        elapsed = int(time.time() - start_time)
-        mins, secs = divmod(elapsed, 60)
-        timer_str = f"{mins:02}:{secs:02}"
-        progress_str = f"{idx} out of {total_patterns} patterns checked | Time: {timer_str}"
-        print(f"\r{progress_str}", end='', flush=True)
-
-# Newline before results
-print()
-
-# Print only the results: file, line number, content
-seen = set()
-for filepath, line_num, line in results:
-    key = (filepath, line_num, line)
-    if key not in seen:
-        print(f"{filepath}:{line_num}: {line}")
-        seen.add(key)
+# Print only unique results
+printf "%s\n" "${results[@]}" | sort -u
