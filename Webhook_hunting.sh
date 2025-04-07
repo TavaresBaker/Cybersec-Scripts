@@ -1,25 +1,14 @@
-#!/bin/bash
+#!/bin/sh
 
-# List of common webhook URL patterns
-patterns=(
-  "hooks.slack.com"
-  "discord.com/api/webhooks"
-  "outlook.office.com/webhook"
-  "mattermost.com/hooks"
-  "webhook.site"
-  "zapier.com/hooks"
-  "ifttt.com/trigger"
-  "api.github.com/repos/.*/hooks"
-)
+# Basic list of webhook domains to search for
+patterns="hooks.slack.com discord.com/api/webhooks outlook.office.com/webhook webhook.site zapier.com/hooks ifttt.com/trigger"
 
-echo "🔍 Scanning for known webhook URLs..."
-echo
+echo "Scanning for webhook URLs..."
 
-# Search recursively in current directory
-for pattern in "${patterns[@]}"; do
-    echo "Looking for: $pattern"
-    grep -R --color=always -i "$pattern" . || echo "❌ None found for $pattern"
-    echo "--------------------------------------"
+for pattern in $patterns; do
+    echo "Looking for $pattern..."
+    find / -type f -exec grep "$pattern" {} \; 2>/dev/null
+    echo "------------------------------"
 done
 
-echo "✅ Scan complete."
+echo "Scan finished."
