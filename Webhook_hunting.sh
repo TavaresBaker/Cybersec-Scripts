@@ -1,17 +1,11 @@
 #!/bin/sh
 
-# Webhook patterns to search for (including 'url' and other concrete patterns)
-patterns="hooks.slack.com discord.com/api/webhooks outlook.office.com/webhook webhook.site zapier.com/hooks ifttt.com/trigger url"
+# Webhook patterns to search for (including specific webhook URLs and other concrete patterns)
+patterns="hooks.slack.com discord.com/api/webhooks outlook.office.com/webhook webhook.site zapier.com/hooks ifttt.com/trigger api.telegram.org/bot webhook.api/github.com"
 
 # Temp results file
 results_file="/tmp/webhook_hits.txt"
 : > "$results_file"
-
-# Convert patterns into a format for grep (-e option for multiple patterns)
-grep_patterns=""
-for pattern in $patterns; do
-    grep_patterns+="-e $pattern "
-done
 
 total_patterns=$(echo "$patterns" | wc -w)
 current_pattern=0
@@ -28,24 +22,26 @@ start_timer() {
 
 echo "🔍 Starting webhook scan..."
 
-# Run `find` once and then pass the result to `grep` with multiple patterns
-find / -type f 2>/dev/null | while read file; do
-    # Start the timer only for the first pattern
-    if [ "$current_pattern" -eq 0 ]; then
-        start_timer &
-        timer_pid=$!
-    fi
+# Loop through each pattern
+for pattern in $patterns; do
+    current_pattern=$((current_pattern + 1))
 
-    # Search for multiple patterns in the file and output the result with line numbers
-    grep -Hn $grep_patterns "$file" 2>/dev/null | while read match; do
-        echo "$match" >> "$results_file"
+    # Start timer
+    start_timer &
+    timer_pid=$!
+
+    # Search, save file path and line number
+    find / -type f 2>/dev/null | while read file; do
+        # Use grep to find the pattern and print line numbers
+        grep -Hn "$pattern" "$file" 2>/dev/null | while read match; do
+            echo "$match" >> "$results_file"
+        done
     done
-done
 
-# Kill the timer process
-kill "$timer_pid" 2>/dev/null
-wait "$timer_pid" 2>/dev/null
-printf "\r                                              \r"
+    kill "$timer_pid" 2>/dev/null
+    wait "$timer_pid" 2>/dev/null
+    printf "\r                                              \r"
+done
 
 # Final deduplicated output
 hits=$(sort -u "$results_file")
