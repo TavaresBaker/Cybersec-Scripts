@@ -1,7 +1,7 @@
 #!/bin/sh
 
-# Webhook patterns to search for
-patterns="hooks.slack.com discord.com/api/webhooks outlook.office.com/webhook webhook.site zapier.com/hooks ifttt.com/trigger"
+# Webhook patterns to search for (including 'url' and other concrete patterns)
+patterns="hooks.slack.com discord.com/api/webhooks outlook.office.com/webhook webhook.site zapier.com/hooks ifttt.com/trigger url"
 
 # Temp results file
 results_file="/tmp/webhook_hits.txt"
@@ -29,11 +29,12 @@ for pattern in $patterns; do
     start_timer &
     timer_pid=$!
 
-    # Search, save only file paths
+    # Search, save file path and line number
     find / -type f 2>/dev/null | while read file; do
-        if grep -q "$pattern" "$file" 2>/dev/null; then
-            echo "$file" >> "$results_file"
-        fi
+        # Use grep to find the pattern and print line numbers
+        grep -Hn "$pattern" "$file" 2>/dev/null | while read match; do
+            echo "$match" >> "$results_file"
+        done
     done
 
     kill "$timer_pid" 2>/dev/null
