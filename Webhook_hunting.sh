@@ -5,12 +5,12 @@ patterns="hooks.slack.com discord.com/api/webhooks outlook.office.com/webhook we
 
 # Temp results file
 results_file="/tmp/webhook_hits.txt"
-: > "$results_file"  # Clear it
+: > "$results_file"
 
 total_patterns=$(echo "$patterns" | wc -w)
 current_pattern=0
 
-# Function to show live timer
+# Timer function
 start_timer() {
     seconds=0
     while true; do
@@ -22,7 +22,6 @@ start_timer() {
 
 echo "🔍 Starting webhook scan..."
 
-# Loop through each pattern
 for pattern in $patterns; do
     current_pattern=$((current_pattern + 1))
 
@@ -30,25 +29,24 @@ for pattern in $patterns; do
     start_timer &
     timer_pid=$!
 
-    # Search
+    # Search, save only file paths
     find / -type f 2>/dev/null | while read file; do
-        grep -H "$pattern" "$file" 2>/dev/null >> "$results_file"
+        if grep -q "$pattern" "$file" 2>/dev/null; then
+            echo "$file" >> "$results_file"
+        fi
     done
 
-    # Stop timer
     kill "$timer_pid" 2>/dev/null
     wait "$timer_pid" 2>/dev/null
-
-    # Clear timer line
-    printf "\r                                               \r"
+    printf "\r                                              \r"
 done
 
-# Display results
-hit_count=$(wc -l < "$results_file")
+# Final deduplicated output
+hits=$(sort -u "$results_file")
 
-if [ "$hit_count" -gt 0 ]; then
-    echo "✅ Found $hit_count result(s):"
-    cat "$results_file"
+if [ -n "$hits" ]; then
+    echo "✅ Found the following files with webhook URLs:"
+    echo "$hits"
 else
     echo "✅ No webhook URLs found."
 fi
