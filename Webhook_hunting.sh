@@ -3,14 +3,14 @@
 # Webhook patterns to search for
 patterns="hooks.slack.com discord.com/api/webhooks outlook.office.com/webhook webhook.site zapier.com/hooks ifttt.com/trigger"
 
-# Results file
+# Temp results file
 results_file="/tmp/webhook_hits.txt"
-: > "$results_file"  # Empty it
+: > "$results_file"  # Clear it
 
 total_patterns=$(echo "$patterns" | wc -w)
 current_pattern=0
 
-# Function to show a live timer
+# Function to show live timer
 start_timer() {
     seconds=0
     while true; do
@@ -26,15 +26,13 @@ echo "🔍 Starting webhook scan..."
 for pattern in $patterns; do
     current_pattern=$((current_pattern + 1))
 
-    # Start timer in background
+    # Start timer
     start_timer &
     timer_pid=$!
 
-    # Search and store results
+    # Search
     find / -type f 2>/dev/null | while read file; do
-        if grep -q "$pattern" "$file" 2>/dev/null; then
-            grep -H "$pattern" "$file" 2>/dev/null >> "$results_file"
-        fi
+        grep -H "$pattern" "$file" 2>/dev/null >> "$results_file"
     done
 
     # Stop timer
@@ -42,24 +40,15 @@ for pattern in $patterns; do
     wait "$timer_pid" 2>/dev/null
 
     # Clear timer line
-    printf "\r✅ Pattern %d/%d complete.                             \n" "$current_pattern" "$total_patterns"
+    printf "\r                                               \r"
 done
 
-# Final Summary
+# Display results
 hit_count=$(wc -l < "$results_file")
 
-echo
-echo "✅ Full scan complete."
-echo "🔢 Total hits: $hit_count"
-
 if [ "$hit_count" -gt 0 ]; then
-    echo
-    echo "📁 Files containing webhooks:"
-    cut -d: -f1 "$results_file" | sort | uniq
-
-    echo
-    echo "📄 Matched lines:"
+    echo "✅ Found $hit_count result(s):"
     cat "$results_file"
 else
-    echo "👍 No webhook URLs found."
+    echo "✅ No webhook URLs found."
 fi
