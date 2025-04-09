@@ -1,10 +1,47 @@
-echo "[*] Restoring critical system files..."
+#!/bin/sh
 
-GITHUB_PFSENSE="https://raw.githubusercontent.com/pfsense/pfsense/RELENG_2_7_0"
+# Step 0: Detect pfSense version
+VERSION_RAW=$(cat /etc/version | cut -d'-' -f1)
+BRANCH="RELENG_$(echo "$VERSION_RAW" | tr '.' '_')"
+
+echo "[*] Detected pfSense version: $VERSION_RAW"
+echo "[*] Using GitHub branch: $BRANCH"
+
+GITHUB_PFSENSE="https://raw.githubusercontent.com/pfsense/pfsense/${BRANCH}"
 GITHUB_FREEBSD="https://raw.githubusercontent.com/freebsd/freebsd-src/releng/14.0"
+
 FAILED_FILES=""
 
-# Files that are safe to fetch and replace
+# Step 1: Go to root's home directory
+cd /root || exit 1
+
+# Step 2: Create backup folder
+mkdir -p backups_php
+
+# Step 3: Copy /usr/local/www into backup
+cp -a /usr/local/www backups_php/
+
+echo "[+] Backup complete at /root/backups_php/www"
+
+# Step 4: Go to /usr/local
+cd /usr/local || exit 1
+
+# Step 5: Download fresh www directory from GitHub
+fetch "https://codeload.github.com/pfsense/pfsense/zip/refs/heads/${BRANCH}" -o pfsense.zip
+
+# Step 6: Unzip and replace www
+unzip -oq pfsense.zip
+rm -rf www
+cp -a "pfsense-${BRANCH}/src/usr/local/www" .
+
+# Step 7: Cleanup
+rm -rf pfsense.zip "pfsense-${BRANCH}"
+
+echo "[✔] /usr/local/www has been replaced from GitHub."
+
+# Step 8: Restore crontab and sshd_config
+echo "[*] Restoring system files..."
+
 FILES_TO_RESTORE="
 /etc/crontab:${GITHUB_PFSENSE}/src/etc/crontab
 /etc/ssh/sshd_config:${GITHUB_FREEBSD}/etc/ssh/sshd_config
@@ -26,14 +63,14 @@ for item in $FILES_TO_RESTORE; do
   fi
 done
 
-# Warn about files we can't restore automatically
+# Step 9: Warn about passwd and master.passwd
 echo "[!] Skipping automatic restore for:"
 echo " - /etc/passwd"
 echo " - /etc/master.passwd"
-echo "Please restore these from a trusted backup or a clean pfSense install."
+echo "These should only be restored from a trusted backup or reinstallation!"
 
-# Restore rc.d from FreeBSD (fallback)
-echo "[*] Attempting to restore /usr/local/etc/rc.d/* from FreeBSD ports tree..."
+# Step 10: Restore rc.d scripts
+echo "[*] Attempting to restore /usr/local/etc/rc.d/* scripts..."
 
 mkdir -p /root/backups_php/rc.d
 cp -a /usr/local/etc/rc.d /root/backups_php/rc.d/
@@ -41,7 +78,7 @@ cp -a /usr/local/etc/rc.d /root/backups_php/rc.d/
 fetch https://codeload.github.com/pfsense/FreeBSD-ports/zip/refs/heads/devel -o ports.zip
 unzip -oq ports.zip
 
-if [ -d "FreeBSD-ports-devel/security" ]; then
+if [ -d "FreeBSD-ports-devel" ]; then
   rm -rf /usr/local/etc/rc.d/*
   find FreeBSD-ports-devel -type f -name "*.in" -exec cp {} /usr/local/etc/rc.d/ \;
   echo "[✔] rc.d scripts restored from FreeBSD-ports."
@@ -50,13 +87,13 @@ else
   FAILED_FILES="${FAILED_FILES}\n/usr/local/etc/rc.d/*"
 fi
 
-# Clean up
+# Cleanup
 rm -rf ports.zip FreeBSD-ports-devel
 
-# Report any failures
+# Step 11: Final result
 if [ -n "$FAILED_FILES" ]; then
   echo "[!] The following files failed to update:"
   echo -e "$FAILED_FILES"
 else
-  echo "[✔] All remaining files restored successfully."
+  echo "[✔] All files restored successfully."
 fi
