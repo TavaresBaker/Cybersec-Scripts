@@ -63,13 +63,8 @@ for item in $FILES_TO_RESTORE; do
   fi
 done
 
-# Step 9: Warn about passwd and master.passwd
-echo "[!] Skipping automatic restore for:"
-echo " - /etc/passwd"
-echo " - /etc/master.passwd"
-echo "These should only be restored from a trusted backup or reinstallation!"
 
-# Step 10: Restore rc.d scripts
+# Step 9: Restore rc.d scripts
 echo "[*] Attempting to restore /usr/local/etc/rc.d/* scripts..."
 
 mkdir -p /root/backups_php/rc.d
@@ -90,7 +85,7 @@ fi
 # Cleanup
 rm -rf ports.zip FreeBSD-ports-devel
 
-# Step 11: Final result
+# Step 10: Final result
 if [ -n "$FAILED_FILES" ]; then
   echo "[!] The following files failed to update:"
   echo -e "$FAILED_FILES"
