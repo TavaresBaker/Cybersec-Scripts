@@ -18,35 +18,31 @@ unzip -q "$TMPDIR/pfsense.zip" -d "$TMPDIR"
 # Source directory from GitHub
 SRC_DIR="$TMPDIR/pfsense-${BRANCH}/src"
 
-# List of directories to check
-TARGET_DIRS="
-/usr/local/www
-/etc
-/usr/local/etc/rc.d
-"
+# List of virtual/system dirs to skip
+SKIP_DIRS="/dev /proc /sys /tmp /mnt /media /var/run /var/tmp /compat /root/.cache"
 
-# Store non-native files
+# Store non-native and deleted files
 NON_NATIVE="/tmp/non_native_files.txt"
+DELETED_LOG="/tmp/deleted_files.log"
 > "$NON_NATIVE"
+> "$DELETED_LOG"
 
-echo "[*] Scanning for non-native files..."
+echo "[*] Scanning full filesystem for non-native files..."
 
-for DIR in $TARGET_DIRS; do
-  CLEAN_DIR="$SRC_DIR$DIR"
-
-  if [ ! -d "$CLEAN_DIR" ]; then
-    echo "[-] Skipping $DIR (not in official source)"
-    continue
-  fi
-
-  find "$DIR" -type f | while read -r LOCAL_FILE; do
-    REL_PATH="${LOCAL_FILE#$DIR}"
-    REF_FILE="$CLEAN_DIR$REL_PATH"
-
-    if [ ! -f "$REF_FILE" ]; then
-      echo "$LOCAL_FILE" >> "$NON_NATIVE"
-    fi
+find / -type f 2>/dev/null | while read -r LOCAL_FILE; do
+  # Skip system dirs
+  for SKIP in $SKIP_DIRS; do
+    case "$LOCAL_FILE" in
+      $SKIP/*) continue 2 ;;
+    esac
   done
+
+  REL_PATH="$LOCAL_FILE"
+  REF_FILE="$SRC_DIR$REL_PATH"
+
+  if [ ! -f "$REF_FILE" ]; then
+    echo "$LOCAL_FILE" >> "$NON_NATIVE"
+  fi
 done
 
 echo ""
@@ -59,10 +55,15 @@ echo "[?] Delete all non-native files listed above? (yes/no)"
 read -r CONFIRM
 if [ "$CONFIRM" = "yes" ]; then
   while read -r FILE; do
-    echo "[x] Deleting $FILE"
-    rm -f "$FILE"
+    if rm -f "$FILE"; then
+      echo "[✔] Deleted: $FILE"
+      echo "$FILE" >> "$DELETED_LOG"
+    else
+      echo "[!] Failed to delete: $FILE"
+    fi
   done < "$NON_NATIVE"
-  echo "[✔] Deletion complete."
+  echo ""
+  echo "[✓] All listed files processed. Deleted files logged in: $DELETED_LOG"
 else
   echo "[!] No files were deleted."
 fi
