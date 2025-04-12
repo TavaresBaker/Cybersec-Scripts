@@ -1,52 +1,27 @@
-#!/bin/bash
+#!/bin/sh
 
-# Define patterns
-patterns=(
-    'https:\/\/discord[a-z]*\.com\/api\/webhooks\/[^[:space:]\"]\+'
-    'https:\/\/hooks\.slack\.com\/services\/[^[:space:]\"]\+'
-    '\.pf\b'
-    '\bwebhook\b'
-    '\bhookurl\b'
-    '\bwebhook_path\b'
-)
+# Output file for results
+OUTPUT="/root/discord_webhooks_found.txt"
+> "$OUTPUT"
 
-# Start time
-start_time=$(date +%s)
+echo "Scanning system for Discord webhooks..."
+echo "Results will be saved to: $OUTPUT"
+echo "----------" > "$OUTPUT"
 
-# Collect all files (excluding binaries)
-mapfile -t files < <(find . -type f ! -name "*.png" ! -name "*.jpg" ! -name "*.gif" ! -name "*.jpeg" ! -name "*.webp" ! -name "*.exe" ! -name "*.bin" ! -name "*.so" ! -name "*.dll")
+# Define the pattern for a Discord webhook URL
+WEBHOOK_PATTERN="discord\.com/api/webhooks"
 
-total_patterns=${#patterns[@]}
-results=()
-
-# Function to show timer
-show_progress() {
-    local count=$1
-    local now=$(date +%s)
-    local elapsed=$((now - start_time))
-    local mins=$((elapsed / 60))
-    local secs=$((elapsed % 60))
-    printf "\r%d out of %d patterns checked | Time: %02d:%02d" "$count" "$total_patterns" "$mins" "$secs"
-}
-
-# Search logic
-for i in "${!patterns[@]}"; do
-    pattern="${patterns[$i]}"
-    for file in "${files[@]}"; do
-        if [[ -r "$file" ]]; then
-            matches=$(grep -niE "$pattern" "$file" 2>/dev/null)
-            if [[ -n "$matches" ]]; then
-                while IFS= read -r line; do
-                    results+=("$file:$line")
-                done <<< "$matches"
-            fi
+# Search key directories
+for DIR in /etc /root /usr /var /tmp /home /conf; do
+    echo "Scanning $DIR..."
+    find "$DIR" -type f 2>/dev/null | while read FILE; do
+        if grep -qE "$WEBHOOK_PATTERN" "$FILE" 2>/dev/null; then
+            echo "Found potential webhook in: $FILE" | tee -a "$OUTPUT"
+            grep -E "$WEBHOOK_PATTERN" "$FILE" | tee -a "$OUTPUT"
+            echo "-----------------------------" >> "$OUTPUT"
         fi
     done
-    show_progress $((i + 1))
 done
 
-# Newline before output
-echo
-
-# Print only unique results
-printf "%s\n" "${results[@]}" | sort -u
+echo "Scan complete."
+echo "Review the file at $OUTPUT"
