@@ -1,73 +1,72 @@
 #!/bin/sh
 
-# Step 0: Detect pfSense version
+# pfSense Full Web Interface + Init Restore Script
+# Safely restores GUI, init system, and web server config
+
+# Detect pfSense version
 VERSION_RAW=$(cat /etc/version | cut -d'-' -f1)
 BRANCH="RELENG_$(echo "$VERSION_RAW" | tr '.' '_')"
 
+# Fallback options if main branch fails
+BRANCHES="$BRANCH master main"
+
 echo "[*] Detected pfSense version: $VERSION_RAW"
-echo "[*] Using GitHub branch: $BRANCH"
+echo "[*] Trying branches: $BRANCHES"
 
 GITHUB_PFSENSE="https://raw.githubusercontent.com/pfsense/pfsense"
 GITHUB_FREEBSD="https://raw.githubusercontent.com/freebsd/freebsd-src/releng/14.0"
 
 FAILED_FILES=""
 
-# Step 1: Go to root's home directory
+# Backup section
 cd /root || exit 1
-
-# Step 2: Create backup folder
 mkdir -p backups_php
-
-# Step 3: Copy /usr/local/www into backup
 cp -a /usr/local/www backups_php/
+cp -a /usr/local/etc/rc.d backups_php/rc.d/
 
-echo "[+] Backup complete at /root/backups_php/www"
+echo "[+] Backups complete in /root/backups_php/"
 
-# Step 4: Go to /usr/local
+# Replace web interface
 cd /usr/local || exit 1
-
-# Step 5: Download fresh www directory from GitHub
-fetch "https://codeload.github.com/pfsense/pfsense/zip/refs/heads/${BRANCH}" -o pfsense.zip
-
-# Step 6: Unzip and replace www
+fetch "https://codeload.github.com/pfsense/pfsense/zip/refs/heads/${BRANCH}" -o pfsense.zip || exit 1
 unzip -oq pfsense.zip
 rm -rf www
 cp -a "pfsense-${BRANCH}/src/usr/local/www" .
-
-# Step 7: Cleanup
 rm -rf pfsense.zip "pfsense-${BRANCH}"
+echo "[✔] /usr/local/www replaced."
 
-echo "[✔] /usr/local/www has been replaced from GitHub."
+# Function to download a file with fallback branches
+restore_file() {
+  LOCAL_PATH="$1"
+  RELATIVE_URL="$2"
 
-# Step 8: Restore rc.initial reliably
-echo "[*] Restoring /etc/rc.initial..."
+  for BR in $BRANCHES; do
+    URL="${GITHUB_PFSENSE}/${BR}/src${RELATIVE_URL}"
+    TMP_FILE="/tmp/$(basename "$LOCAL_PATH")"
 
-RC_LOCAL="/etc/rc.initial"
-TMP_FILE="/tmp/rc.initial"
-RC_BRANCHES="$BRANCH master main"
+    echo "[~] Trying to restore $LOCAL_PATH from $URL"
+    curl -fsSL "$URL" -o "$TMP_FILE" && {
+      cp "$TMP_FILE" "$LOCAL_PATH"
+      echo "[✔] Restored $LOCAL_PATH"
+      return 0
+    }
+  done
 
-for BR in $RC_BRANCHES; do
-  RC_URL="${GITHUB_PFSENSE}/${BR}/src/etc/rc.initial"
-  echo "[~] Trying: $RC_URL"
-  curl -fsSL "$RC_URL" -o "$TMP_FILE" && break
-done
+  echo "[!] Failed to restore $LOCAL_PATH"
+  FAILED_FILES="${FAILED_FILES}\n$LOCAL_PATH"
+  return 1
+}
 
-if [ -f "$TMP_FILE" ]; then
-  [ -L "$RC_LOCAL" ] && rm -f "$RC_LOCAL"  # Remove symlink if needed
-  cp "$TMP_FILE" "$RC_LOCAL"
-  chmod +x "$RC_LOCAL"
-  echo "[✔] /etc/rc.initial restored."
-else
-  echo "[!] Failed to restore /etc/rc.initial"
-  FAILED_FILES="${FAILED_FILES}\n/etc/rc.initial"
-fi
+# Restore critical system files
+restore_file "/etc/rc.initial" "/etc/rc.initial"
+restore_file "/etc/inc/config.inc" "/etc/inc/config.inc"
+restore_file "/etc/inc/auth.inc" "/etc/inc/auth.inc"
+restore_file "/usr/local/etc/lighty.conf" "/usr/local/etc/lighty.conf"
 
-# Step 9: Restore rc.d scripts
-echo "[*] Attempting to restore /usr/local/etc/rc.d/* scripts..."
+chmod +x /etc/rc.initial 2>/dev/null
 
-mkdir -p /root/backups_php/rc.d
-cp -a /usr/local/etc/rc.d /root/backups_php/rc.d/
-
+# Restore rc.d scripts
+echo "[*] Restoring /usr/local/etc/rc.d/* scripts..."
 fetch https://codeload.github.com/pfsense/FreeBSD-ports/zip/refs/heads/devel -o ports.zip
 unzip -oq ports.zip
 
@@ -80,13 +79,35 @@ else
   FAILED_FILES="${FAILED_FILES}\n/usr/local/etc/rc.d/*"
 fi
 
-# Cleanup
-rm -rf ports.zip FreeBSD-ports-devel "$TMP_FILE"
+rm -rf ports.zip FreeBSD-ports-devel
 
-# Step 10: Final result
+# Optional cleanups (does not reset config)
+echo "[*] Cleaning up temp PHP sessions..."
+rm -rf /var/tmp/php* /tmp/php*
+
+# Restart web GUI and services
+echo "[*] Restarting GUI and services..."
+pfSsh.php playback svc restart webgui
+pfSsh.php playback svc restart all
+
+# Final report
+clear
+echo "----------------------------------------"
+echo "[✔] Restore Completed."
+echo "----------------------------------------"
+echo "The following files were successfully restored:"
+echo "/etc/rc.initial"
+echo "/etc/inc/config.inc"
+echo "/etc/inc/auth.inc"
+echo "/usr/local/etc/lighty.conf"
+echo "/usr/local/www (Web GUI)"
+echo "/usr/local/etc/rc.d (Startup Scripts)"
+echo "----------------------------------------"
+
+# Display failed files if any
 if [ -n "$FAILED_FILES" ]; then
-  echo "[!] The following files failed to update:"
+  echo "The following files failed to restore:"
   echo -e "$FAILED_FILES"
 else
-  echo "[✔] All files restored successfully."
+  echo "[✔] No files failed to restore."
 fi
