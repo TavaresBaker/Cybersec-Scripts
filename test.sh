@@ -7,7 +7,7 @@ BRANCH="RELENG_$(echo "$VERSION_RAW" | tr '.' '_')"
 echo "[*] Detected pfSense version: $VERSION_RAW"
 echo "[*] Using GitHub branch: $BRANCH"
 
-GITHUB_PFSENSE="https://raw.githubusercontent.com/pfsense/pfsense/${BRANCH}"
+GITHUB_PFSENSE="https://raw.githubusercontent.com/pfsense/pfsense"
 GITHUB_FREEBSD="https://raw.githubusercontent.com/freebsd/freebsd-src/releng/14.0"
 
 FAILED_FILES=""
@@ -39,28 +39,28 @@ rm -rf pfsense.zip "pfsense-${BRANCH}"
 
 echo "[✔] /usr/local/www has been replaced from GitHub."
 
-# Step 8: Restore system files (only rc.initial now)
-echo "[*] Restoring system files..."
+# Step 8: Restore rc.initial reliably
+echo "[*] Restoring /etc/rc.initial..."
 
-FILES_TO_RESTORE="
-/etc/rc.initial:${GITHUB_PFSENSE}/src/etc/rc.initial
-"
+RC_LOCAL="/etc/rc.initial"
+TMP_FILE="/tmp/rc.initial"
+RC_BRANCHES="$BRANCH master main"
 
-for item in $FILES_TO_RESTORE; do
-  LOCAL_FILE=$(echo "$item" | cut -d: -f1)
-  REMOTE_URL=$(echo "$item" | cut -d: -f2)
-  TMP_FILE="/tmp/$(basename "$LOCAL_FILE")"
-
-  echo "[~] Restoring $LOCAL_FILE from $REMOTE_URL"
-  curl -fsSL "$REMOTE_URL" -o "$TMP_FILE"
-
-  if [ $? -eq 0 ]; then
-    cp "$TMP_FILE" "$LOCAL_FILE"
-  else
-    echo "[!] Failed to restore $LOCAL_FILE"
-    FAILED_FILES="${FAILED_FILES}\n$LOCAL_FILE"
-  fi
+for BR in $RC_BRANCHES; do
+  RC_URL="${GITHUB_PFSENSE}/${BR}/src/etc/rc.initial"
+  echo "[~] Trying: $RC_URL"
+  curl -fsSL "$RC_URL" -o "$TMP_FILE" && break
 done
+
+if [ -f "$TMP_FILE" ]; then
+  [ -L "$RC_LOCAL" ] && rm -f "$RC_LOCAL"  # Remove symlink if needed
+  cp "$TMP_FILE" "$RC_LOCAL"
+  chmod +x "$RC_LOCAL"
+  echo "[✔] /etc/rc.initial restored."
+else
+  echo "[!] Failed to restore /etc/rc.initial"
+  FAILED_FILES="${FAILED_FILES}\n/etc/rc.initial"
+fi
 
 # Step 9: Restore rc.d scripts
 echo "[*] Attempting to restore /usr/local/etc/rc.d/* scripts..."
@@ -81,7 +81,7 @@ else
 fi
 
 # Cleanup
-rm -rf ports.zip FreeBSD-ports-devel
+rm -rf ports.zip FreeBSD-ports-devel "$TMP_FILE"
 
 # Step 10: Final result
 if [ -n "$FAILED_FILES" ]; then
