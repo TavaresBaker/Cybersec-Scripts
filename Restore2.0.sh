@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # pfSense Full Web Interface + Init Restore Script
-# Safely restores GUI, init system, and web server config
+# Safely restores GUI, init system, and other essential files
 
 # Detect pfSense version
 VERSION_RAW=$(cat /etc/version | cut -d'-' -f1)
@@ -61,7 +61,6 @@ restore_file() {
 restore_file "/etc/rc.initial" "/etc/rc.initial"
 restore_file "/etc/inc/config.inc" "/etc/inc/config.inc"
 restore_file "/etc/inc/auth.inc" "/etc/inc/auth.inc"
-restore_file "/usr/local/etc/lighty.conf" "/usr/local/etc/lighty.conf"
 
 chmod +x /etc/rc.initial 2>/dev/null
 
