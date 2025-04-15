@@ -39,12 +39,11 @@ rm -rf pfsense.zip "pfsense-${BRANCH}"
 
 echo "[✔] /usr/local/www has been replaced from GitHub."
 
-# Step 8: Restore crontab and sshd_config
+# Step 8: Restore system files (only rc.initial now)
 echo "[*] Restoring system files..."
 
 FILES_TO_RESTORE="
-/etc/crontab:${GITHUB_PFSENSE}/src/etc/crontab
-/etc/ssh/sshd_config:${GITHUB_FREEBSD}/etc/ssh/sshd_config
+/etc/rc.initial:${GITHUB_PFSENSE}/src/etc/rc.initial
 "
 
 for item in $FILES_TO_RESTORE; do
@@ -62,7 +61,6 @@ for item in $FILES_TO_RESTORE; do
     FAILED_FILES="${FAILED_FILES}\n$LOCAL_FILE"
   fi
 done
-
 
 # Step 9: Restore rc.d scripts
 echo "[*] Attempting to restore /usr/local/etc/rc.d/* scripts..."
