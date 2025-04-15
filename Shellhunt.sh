@@ -1,34 +1,33 @@
 #!/bin/bash
-# ShellHunter.sh - Detect reverse shells and suspicious shell processes
+# Clean ShellHunter - Focused output only
 
-echo "[*] Scanning for potential reverse shells and suspicious activity..."
+echo "[*] Starting scan for suspicious shell activity..."
 
-echo -e "\n[+] Step 1: Checking for suspicious processes..."
+# 1. Suspicious processes
 ps aux | grep -E 'nc|netcat|bash|sh|python|perl|php|ruby|socat' | grep -v grep | while read -r line; do
     pid=$(echo "$line" | awk '{print $2}')
     exe_path=$(readlink -f "/proc/$pid/exe" 2>/dev/null)
-    cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null)
-    
     if [[ -n "$exe_path" ]]; then
-        echo -e "\n[*] PID: $pid"
-        echo "[+] Executable: $exe_path"
-        echo "[+] Command Line: $cmdline"
+        echo "[Weird Process] $exe_path"
     fi
 done
 
-echo -e "\n[+] Step 2: Checking for suspicious network connections..."
-netstat -tulpn 2>/dev/null | grep -E '(:4444|:1337|:1234|:9001|:2222|:8080)' || echo "[*] No known reverse shell ports detected."
-
-echo -e "\n[+] Step 3: Looking for shell scripts with potential reverse shell code..."
-grep -r --include="*.sh" -E 'bash -i|nc -e|python.*socket|socat|exec|/dev/tcp|0<&1|>&' /home /tmp /var/tmp 2>/dev/null | while read -r match; do
-    echo "[!] Suspicious script content found: $match"
+# 2. Suspicious listening ports (commonly used in reverse shells)
+netstat -tulpn 2>/dev/null | grep -E '(:4444|:1337|:1234|:9001|:2222|:8080)' | while read -r line; do
+    echo "[Reverse Shell Port] $line"
 done
 
-echo -e "\n[+] Step 4: Checking for rogue startup entries..."
+# 3. Suspicious script contents
+grep -r --include="*.sh" -E 'bash -i|nc -e|python.*socket|socat|/dev/tcp|exec [0-9]' /home /tmp /var/tmp 2>/dev/null | while read -r match; do
+    filepath=$(echo "$match" | cut -d: -f1)
+    echo "[Suspicious Script] $filepath"
+done
+
+# 4. Suspicious startup files
 find /etc/systemd /etc/init.d ~/.config/autostart -type f 2>/dev/null | while read -r startup; do
-    if grep -qi 'python\|nc\|bash\|sh' "$startup"; then
-        echo "[!] Suspicious startup file: $startup"
+    if grep -qiE 'python|nc|bash|sh' "$startup"; then
+        echo "[Startup File] $startup"
     fi
 done
 
-echo -e "\n[✓] Scan complete."
+echo "[✓] Scan done."
