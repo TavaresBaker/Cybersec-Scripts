@@ -1,45 +1,39 @@
 #!/bin/sh
 
-SCAN_DIR="/"
-WEBHOOK_REGEX="discord.com/api/webhooks\|discordapp.com/api/webhooks"
-START=$(date +%s)
-CHECKED=0
+# Directory to search — change this to narrow scope if needed
+SEARCH_DIR="/"
 
-# Get file list
-FILELIST=$(mktemp)
-find "$SCAN_DIR" -type f 2>/dev/null > "$FILELIST"
-TOTAL=$(wc -l < "$FILELIST")
+# Regex pattern to detect webhook URLs (Discord, Slack, etc.)
+WEBHOOK_REGEX="https:\/\/\(discord\(app\)\\{0,1\}\.com\/api\/webhooks\|hooks\.slack\.com\/services\|.*/webhook/.*\)"
 
-# Display timer
-timer() {
-    while :; do
-        NOW=$(date +%s)
-        ELAPSED=$((NOW - START))
-        MINS=$((ELAPSED / 60))
-        SECS=$((ELAPSED % 60))
-        if [ "$TOTAL" -gt 0 ]; then
-            PERCENT=$((CHECKED * 100 / TOTAL))
-        else
-            PERCENT=100
-        fi
-        printf "\rTime Elapsed: %02d:%02d | Files Checked: %d/%d | %d%%" "$MINS" "$SECS" "$CHECKED" "$TOTAL" "$PERCENT"
-        sleep 1
-    done
-}
+# Get total number of files (avoid divide-by-zero)
+TOTAL_FILES=$(find "$SEARCH_DIR" -type f | wc -l)
+[ "$TOTAL_FILES" -eq 0 ] && TOTAL_FILES=1
 
-# Start timer
-timer &
-TIMER_PID=$!
+START_TIME=$(date +%s)
+SCANNED=0
 
-# Scan files without subshell
-while IFS= read -r file; do
-    if file "$file" 2>/dev/null | grep -q "text"; then
-        grep -E "$WEBHOOK_REGEX" "$file" >/dev/null 2>&1
-    fi
-    CHECKED=$((CHECKED + 1))
-done < "$FILELIST"
+# Catch Ctrl+C
+trap 'echo "\nCancelled."; exit 1' INT
 
-# Cleanup
-kill "$TIMER_PID" 2>/dev/null
-rm "$FILELIST"
-echo "\nScan complete."
+# Scan files
+find "$SEARCH_DIR" -type f | while read -r file; do
+  SCANNED=$((SCANNED + 1))
+  
+  # Grep for webhook pattern, but don't print
+  grep -E "$WEBHOOK_REGEX" "$file" >/dev/null 2>&1
+
+  # Timer
+  NOW=$(date +%s)
+  ELAPSED=$((NOW - START_TIME))
+  MINS=$((ELAPSED / 60))
+  SECS=$((ELAPSED % 60))
+
+  # Progress %
+  PERCENT=$((SCANNED * 100 / TOTAL_FILES))
+
+  # Display dynamic status
+  printf "\rChecked: %d/%d files | %d%% | Elapsed: %02d:%02d" "$SCANNED" "$TOTAL_FILES" "$PERCENT" "$MINS" "$SECS"
+done
+
+echo "\nScan complete. Type 'clear' to clean up the terminal."
