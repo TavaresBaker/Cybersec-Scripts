@@ -2,6 +2,7 @@
 
 SEARCH_DIR="/"
 
+# Escaped regex for Discord, Slack, and general webhook-like URLs
 WEBHOOK_REGEX="https:\/\/\(discord\(app\)\{0,1\}\.com\/api\/webhooks\|hooks\.slack\.com\/services\|.*/webhook/.*\)"
 
 TOTAL_FILES=$(find "$SEARCH_DIR" -type f | wc -l)
@@ -10,17 +11,17 @@ TOTAL_FILES=$(find "$SEARCH_DIR" -type f | wc -l)
 START_TIME=$(date +%s)
 SCANNED=0
 
-trap 'echo "\nCancelled."; exit 1' INT
+# Temp file to store matches in-memory
+MATCHES_FILE="/tmp/webhook_matches.$$"
+> "$MATCHES_FILE"
+
+trap 'echo "\nCancelled."; rm -f "$MATCHES_FILE"; exit 1' INT
 
 find "$SEARCH_DIR" -type f | while read -r file; do
   SCANNED=$((SCANNED + 1))
 
-  # Check for matches and print them if found
-  MATCH=$(grep -E "$WEBHOOK_REGEX" "$file" 2>/dev/null)
-  if [ -n "$MATCH" ]; then
-    echo "\n🔍 Match found in: $file"
-    echo "$MATCH"
-  fi
+  # Search and collect results with file and line number
+  grep -En "$WEBHOOK_REGEX" "$file" 2>/dev/null >> "$MATCHES_FILE"
 
   NOW=$(date +%s)
   ELAPSED=$((NOW - START_TIME))
@@ -32,4 +33,12 @@ find "$SEARCH_DIR" -type f | while read -r file; do
   printf "\rChecked: %d/%d files | %d%% | Elapsed: %02d:%02d" "$SCANNED" "$TOTAL_FILES" "$PERCENT" "$MINS" "$SECS"
 done
 
+echo "\n\n🎯 Matches Found:\n"
 
+if [ -s "$MATCHES_FILE" ]; then
+  cat "$MATCHES_FILE"
+else
+  echo "No webhook URLs found."
+fi
+
+rm -f "$MATCHES_FILE"
