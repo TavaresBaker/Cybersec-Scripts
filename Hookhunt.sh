@@ -2,12 +2,13 @@
 
 SCAN_DIR="/"
 WEBHOOK_REGEX="discord.com/api/webhooks\|discordapp.com/api/webhooks"
-CHECKED=0
 START=$(date +%s)
+CHECKED=0
 
-# Get a list of all text-readable files (skip binaries)
-FILES=$(find "$SCAN_DIR" -type f 2>/dev/null)
-TOTAL=$(echo "$FILES" | wc -l)
+# Get file list
+FILELIST=$(mktemp)
+find "$SCAN_DIR" -type f 2>/dev/null > "$FILELIST"
+TOTAL=$(wc -l < "$FILELIST")
 
 # Display timer
 timer() {
@@ -16,26 +17,29 @@ timer() {
         ELAPSED=$((NOW - START))
         MINS=$((ELAPSED / 60))
         SECS=$((ELAPSED % 60))
-        PERCENT=$((CHECKED * 100 / TOTAL))
+        if [ "$TOTAL" -gt 0 ]; then
+            PERCENT=$((CHECKED * 100 / TOTAL))
+        else
+            PERCENT=100
+        fi
         printf "\rTime Elapsed: %02d:%02d | Files Checked: %d/%d | %d%%" "$MINS" "$SECS" "$CHECKED" "$TOTAL" "$PERCENT"
         sleep 1
     done
 }
 
-# Start timer in background
+# Start timer
 timer &
 TIMER_PID=$!
 
-# Scan files
-echo "$FILES" | while read -r file; do
-    # Avoid binaries or system-protected files
-    if file "$file" | grep -q "text"; then
+# Scan files without subshell
+while IFS= read -r file; do
+    if file "$file" 2>/dev/null | grep -q "text"; then
         grep -E "$WEBHOOK_REGEX" "$file" >/dev/null 2>&1
-        # You can do something with matches here if needed
     fi
     CHECKED=$((CHECKED + 1))
-done
+done < "$FILELIST"
 
-# Kill timer and wrap up
+# Cleanup
 kill "$TIMER_PID" 2>/dev/null
+rm "$FILELIST"
 echo "\nScan complete."
