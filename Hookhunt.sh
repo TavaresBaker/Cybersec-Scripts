@@ -1,64 +1,41 @@
 #!/bin/sh
 
-# === Patterns ===
-WEBHOOK_PATTERNS="hooks.slack.com|discord(app)?\.com/api/webhooks|outlook.office.com/webhook|mattermost.com/hooks|webhook.site|github.com/.*/hooks"
-URL_PATTERN='http[s]?://[^\"'"'"' <>]*'
+SCAN_DIR="/"
+WEBHOOK_REGEX="discord.com/api/webhooks\|discordapp.com/api/webhooks"
+CHECKED=0
+START=$(date +%s)
 
-# === Whitelist of Safe URLs ===
-SAFE_DOMAINS="pfsense.org|netgate.com|pkg.freebsd.org|freebsd.org|github.com/pfsense|ntp.org|nvd.nist.gov|shields.io|letsencrypt.org"
+# Get a list of all text-readable files (skip binaries)
+FILES=$(find "$SCAN_DIR" -type f 2>/dev/null)
+TOTAL=$(echo "$FILES" | wc -l)
 
-# === Search Scope ===
-SEARCH_DIRS="/cf /etc /usr/local/etc /root"
-EXTENSIONS="conf|php|xml|json|sh|inc|txt"
+# Display timer
+timer() {
+    while :; do
+        NOW=$(date +%s)
+        ELAPSED=$((NOW - START))
+        MINS=$((ELAPSED / 60))
+        SECS=$((ELAPSED % 60))
+        PERCENT=$((CHECKED * 100 / TOTAL))
+        printf "\rTime Elapsed: %02d:%02d | Files Checked: %d/%d | %d%%" "$MINS" "$SECS" "$CHECKED" "$TOTAL" "$PERCENT"
+        sleep 1
+    done
+}
 
-LOG_FILE="/root/webhook_scan.log"
-START_TIME=$(date +%s)
-TOTAL_FILES=0
-TOTAL_WEBHOOK_HITS=0
-TOTAL_URL_HITS=0
-> "$LOG_FILE"
+# Start timer in background
+timer &
+TIMER_PID=$!
 
-echo "🔎 Smart scan started... Logging to $LOG_FILE"
-
-# === Scan Relevant Files ===
-find $SEARCH_DIRS \
-  -type f \
-  -iregex ".*\.(${EXTENSIONS})" \
-  ! -size +5M 2>/dev/null | while IFS= read -r file; do
-
-    TOTAL_FILES=$((TOTAL_FILES + 1))
-    echo "Scanning: $file" | tee -a "$LOG_FILE"
-
-    [ ! -f "$file" ] && echo "⚠️ Skipped (not a file): $file" >> "$LOG_FILE" && continue
-
-    # Check for webhook matches
-    MATCHES=$(grep -a -iE "$WEBHOOK_PATTERNS" "$file" 2>/dev/null)
-    if [ -n "$MATCHES" ]; then
-        TOTAL_WEBHOOK_HITS=$((TOTAL_WEBHOOK_HITS + 1))
-        echo "[WEBHOOK] $file" >> "$LOG_FILE"
-        echo "$MATCHES" >> "$LOG_FILE"
+# Scan files
+echo "$FILES" | while read -r file; do
+    # Avoid binaries or system-protected files
+    if file "$file" | grep -q "text"; then
+        grep -E "$WEBHOOK_REGEX" "$file" >/dev/null 2>&1
+        # You can do something with matches here if needed
     fi
-
-    # Check for non-whitelisted URLs
-    URLS=$(grep -a -oEi "$URL_PATTERN" "$file" 2>/dev/null | grep -aviE "$SAFE_DOMAINS")
-    if [ -n "$URLS" ]; then
-        TOTAL_URL_HITS=$((TOTAL_URL_HITS + 1))
-        echo "[URLS] $file" >> "$LOG_FILE"
-        echo "$URLS" >> "$LOG_FILE"
-    fi
+    CHECKED=$((CHECKED + 1))
 done
 
-# === Timer + Output ===
-END_TIME=$(date +%s)
-DURATION=$((END_TIME - START_TIME))
-
-sleep 1
-clear
-echo "✅ Scan finished in $DURATION seconds."
-echo "🔍 Scanned $TOTAL_FILES files."
-echo "🧷 Webhook matches: $TOTAL_WEBHOOK_HITS"
-echo "🌐 Suspicious URLs: $TOTAL_URL_HITS"
-echo "📄 Log file: $LOG_FILE"
-echo "---------------------------------------------"
-cat "$LOG_FILE"
-echo "---------------------------------------------"
+# Kill timer and wrap up
+kill "$TIMER_PID" 2>/dev/null
+echo "\nScan complete."
