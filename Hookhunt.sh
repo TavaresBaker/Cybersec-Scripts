@@ -1,16 +1,16 @@
 #!/bin/sh
 
-# Directories you want to scan
+# Directories to search
 SEARCH_DIR="/usr/local /etc /root /cf/conf /usr/local/www"
 
-# Pattern to catch anything 'webhook'-ish (case-insensitive, greedy)
+# Pattern to match
 PATTERN="webhook"
 
 # Temp match file
 MATCHES="/tmp/webhook_matches.$$"
 > "$MATCHES"
 
-# Get all regular files in given dirs
+# Find all regular files
 ALL_FILES=$(find $SEARCH_DIR -type f)
 TOTAL=$(echo "$ALL_FILES" | wc -l)
 [ "$TOTAL" -eq 0 ] && TOTAL=1
@@ -25,10 +25,13 @@ echo "🔍 Scanning $TOTAL files for anything like 'webhook'..."
 echo "$ALL_FILES" | while read -r file; do
   SCANNED=$((SCANNED + 1))
 
-  # Only check text files (not binaries)
+  # Only scan text files
   if file "$file" | grep -qi 'text'; then
-    # Grep and log matches with file + line number
-    grep -inE "$PATTERN" "$file" 2>/dev/null | sed "s|^|$file:|" >> "$MATCHES"
+    # Get first match line number, if any
+    MATCH_LINE=$(grep -inm1 "$PATTERN" "$file" 2>/dev/null | cut -d: -f1)
+    if [ -n "$MATCH_LINE" ]; then
+      echo "webhook found at $file on line $MATCH_LINE" >> "$MATCHES"
+    fi
   fi
 
   # Timer + progress
@@ -41,10 +44,10 @@ echo "$ALL_FILES" | while read -r file; do
   printf "\rChecked: %d/%d files | %d%% | Elapsed: %02d:%02d" "$SCANNED" "$TOTAL" "$PERCENT" "$MINS" "$SECS"
 done
 
-# Output results
-echo "\n\n🎯 Webhook-related matches found:\n"
+# Output final results
+echo "\n\n🎯 Webhook matches:\n"
 if [ -s "$MATCHES" ]; then
-  cat "$MATCHES"
+  sort -u "$MATCHES"
 else
   echo "No matches found."
 fi
