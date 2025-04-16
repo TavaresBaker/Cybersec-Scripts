@@ -2,11 +2,13 @@
 
 echo "🔍 Checking Active Connections on pfSense..."
 
-# Fetch active connections with netstat (or ss if preferred)
+# Fetch active connections with netstat (with necessary flags)
 echo "Listing Active Connections:"
+
+# netstat -an will list all connections, -p will show the process info (if available)
 netstat -anp | grep ESTABLISHED
 
-# Optionally, you can use ss instead of netstat (if available)
+# Optionally, use ss if available
 # ss -tuln
 # ss -t state established
 
