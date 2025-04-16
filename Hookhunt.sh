@@ -36,4 +36,4 @@ find "$SEARCH_DIR" -type f | while read -r file; do
   printf "\rChecked: %d/%d files | %d%% | Elapsed: %02d:%02d" "$SCANNED" "$TOTAL_FILES" "$PERCENT" "$MINS" "$SECS"
 done
 
-echo "\nScan complete. Type 'clear' to clean up the terminal."
+
