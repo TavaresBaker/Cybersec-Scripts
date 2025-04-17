@@ -1,62 +1,71 @@
-new
-
 #!/bin/sh
-# Clean ShellHunter - Reverse Shell Detection
+# Clean ShellHunter v2 - Reverse/Webshell/Rogue Shell Detection
 
-echo "[*] Starting scan for suspicious shell activity..."
+GREEN="\033[0;32m"
+RED="\033[0;31m"
+YELLOW="\033[1;33m"
+NC="\033[0m" # No Color
+
+echo "${YELLOW}[*] Starting scan for suspicious shell activity...${NC}"
+echo "====================================================="
 
 ### 1. Suspicious processes
-echo "[*] Checking for suspicious processes..."
+echo "${YELLOW}[1/4] Checking for suspicious processes...${NC}"
 proc_hits=0
-ps aux | grep -E 'nc|netcat|bash|sh|python|perl|php|ruby|socat' | grep -v grep | while read -r line; do
+while read -r line; do
     pid=$(echo "$line" | awk '{print $2}')
-    exe_path=$(readlink "/proc/$pid/file" 2>/dev/null)
+    exe_path=$(readlink "/proc/$pid/exe" 2>/dev/null)
     if [ -n "$exe_path" ]; then
-        echo "[Weird Process] $exe_path"
+        echo "${RED}[Weird Process] PID: $pid - $exe_path${NC}"
         proc_hits=1
     fi
-done
-if [ "$proc_hits" -eq 0 ]; then
-    echo "[OK] No suspicious processes found."
-fi
+done <<EOF
+$(ps aux | grep -E 'nc|netcat|bash|sh|python|perl|php|ruby|socat' | grep -v grep)
+EOF
+[ "$proc_hits" -eq 0 ] && echo "${GREEN}[OK] No suspicious processes found.${NC}"
+echo ""
 
 ### 2. Suspicious listening ports
-echo "[*] Checking for suspicious listening ports..."
+echo "${YELLOW}[2/4] Checking for suspicious listening ports...${NC}"
 port_hits=0
-netstat -an | grep -E 'LISTEN' | grep -E '(:4444|:1337|:1234|:9001|:2222|:8080)' | while read -r line; do
-    echo "[Reverse Shell Port] $line"
+while read -r line; do
+    echo "${RED}[Reverse Shell Port] $line${NC}"
     port_hits=1
-done
-if [ "$port_hits" -eq 0 ]; then
-    echo "[OK] No suspicious ports found."
-fi
+done <<EOF
+$(netstat -tunlp 2>/dev/null | grep -E '(:4444|:1337|:1234|:9001|:2222|:8080)')
+EOF
+[ "$port_hits" -eq 0 ] && echo "${GREEN}[OK] No suspicious ports found.${NC}"
+echo ""
 
 ### 3. Suspicious script contents
-echo "[*] Checking for suspicious script contents..."
+echo "${YELLOW}[3/4] Checking for suspicious script contents...${NC}"
 script_hits=0
 for dir in /home /tmp /var/tmp; do
     [ -d "$dir" ] || continue
-    grep -r --include="*.sh" -E 'bash -i|nc -e|python.*socket|socat|/dev/tcp|exec [0-9]' "$dir" 2>/dev/null | while read -r match; do
+    while read -r match; do
         filepath=$(echo "$match" | cut -d: -f1)
-        echo "[Suspicious Script] $filepath"
+        echo "${RED}[Suspicious Script] $filepath${NC}"
         script_hits=1
-    done
+    done <<EOF
+$(grep -r --include="*.sh" -E 'bash -i|nc -e|python.*socket|socat|/dev/tcp|exec [0-9]' "$dir" 2>/dev/null)
+EOF
 done
-if [ "$script_hits" -eq 0 ]; then
-    echo "[OK] No suspicious script contents found."
-fi
+[ "$script_hits" -eq 0 ] && echo "${GREEN}[OK] No suspicious script contents found.${NC}"
+echo ""
 
 ### 4. Suspicious startup entries
-echo "[*] Checking for suspicious startup entries..."
+echo "${YELLOW}[4/4] Checking for suspicious startup entries...${NC}"
 startup_hits=0
-find /etc/rc.d /usr/local/etc/rc.d ~/.config/autostart 2>/dev/null | while read -r startup; do
-    if [ -f "$startup" ] && grep -qEi '\b(nc|python|perl|php|ruby|socat)\b' "$startup"; then
-        echo "[Startup File] $startup"
-        startup_hits=1
-    fi
+startup_dirs="/etc/rc.d /usr/local/etc/rc.d ~/.config/autostart"
+for path in $startup_dirs; do
+    find $path -type f 2>/dev/null | while read -r startup; do
+        if grep -qEi '\b(nc|python|perl|php|ruby|socat)\b' "$startup"; then
+            echo "${RED}[Startup File] $startup${NC}"
+            startup_hits=1
+        fi
+    done
 done
-if [ "$startup_hits" -eq 0 ]; then
-    echo "[OK] No suspicious startup entries found."
-fi
+[ "$startup_hits" -eq 0 ] && echo "${GREEN}[OK] No suspicious startup entries found.${NC}"
+echo ""
 
-echo "[✓] Scan complete."
+echo "${GREEN}[✓] Scan complete.${NC}"
