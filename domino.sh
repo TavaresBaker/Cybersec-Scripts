@@ -22,14 +22,15 @@ pkg install -y "$PFBLOCKER_PKG"
 
 echo ">>> Enabling pfBlockerNG..."
 sysrc pfblockerng_enable="YES"
+
 sleep 5
 
-# === Prepare DNSBL Blocklists ===
-echo ">>> Creating custom DNSBL blocklists..."
+# === Create custom DNSBL lists ===
+echo ">>> Creating custom blocklists..."
 
 mkdir -p /usr/local/pkg/pfblockerng/custom
+mkdir -p /usr/local/pkg/pfblockerng/dnsblfeeds
 
-# Discord and Webhooks
 cat <<EOF > /usr/local/pkg/pfblockerng/custom/discord_block.txt
 discord.com
 discord.gg
@@ -40,7 +41,6 @@ gateway.discord.gg
 discord.com/api/webhooks
 EOF
 
-# Social Media
 cat <<EOF > /usr/local/pkg/pfblockerng/custom/social_block.txt
 facebook.com
 fbcdn.net
@@ -56,7 +56,6 @@ linkedin.com
 tumblr.com
 EOF
 
-# Red Teaming Tools (partial example list)
 cat <<EOF > /usr/local/pkg/pfblockerng/custom/redteam_block.txt
 cobaltstrike.com
 bruteratel.com
@@ -69,21 +68,39 @@ hackforums.net
 cracked.io
 EOF
 
-# === Backup Config ===
-cp /cf/conf/config.xml /cf/conf/config.xml.bak.$(date +%s)
+# === Register as DNSBL feeds ===
+echo ">>> Creating .feed files..."
 
-# === Reload & Apply ===
-/etc/rc.reload_all
+cat <<EOF > /usr/local/pkg/pfblockerng/dnsblfeeds/discord_local.feed
+[Discord Blocklist]
+file:///usr/local/pkg/pfblockerng/custom/discord_block.txt|Custom_Discord|Block Discord & webhooks
+EOF
 
-# === Setup Cron for Updates ===
-echo ">>> Scheduling pfBlockerNG updates..."
+cat <<EOF > /usr/local/pkg/pfblockerng/dnsblfeeds/social_local.feed
+[Social Media Blocklist]
+file:///usr/local/pkg/pfblockerng/custom/social_block.txt|Custom_Social|Block social media domains
+EOF
+
+cat <<EOF > /usr/local/pkg/pfblockerng/dnsblfeeds/redteam_local.feed
+[Red Team Tools Blocklist]
+file:///usr/local/pkg/pfblockerng/custom/redteam_block.txt|Custom_RedTeam|Block red teaming infrastructure
+EOF
+
+# === Run pfBlockerNG update ===
+echo ">>> Running pfBlockerNG update to load feeds..."
+/usr/local/pkg/pfblockerng/pfblockerng.sh update
+
+# === Restart Unbound DNS Resolver ===
+echo ">>> Restarting Unbound DNS Resolver..."
+pfSsh.php playback svc restart unbound
+
+# === Optional: Schedule pfBlockerNG auto-updates ===
+echo ">>> Adding cron job to update pfBlockerNG daily..."
 grep -q 'pfblockerng.sh update' /etc/crontab || echo "0 3 * * * root /usr/local/pkg/pfblockerng/pfblockerng.sh update" >> /etc/crontab
 
-echo ">>> pfBlockerNG installed and custom DNSBLs set."
-echo ">>> To activate these lists:"
-echo "1. Go to Firewall > pfBlockerNG > DNSBL."
-echo "2. Add new DNSBL Feeds pointing to the 3 custom lists:"
-echo "   /usr/local/pkg/pfblockerng/custom/discord_block.txt"
-echo "   /usr/local/pkg/pfblockerng/custom/social_block.txt"
-echo "   /usr/local/pkg/pfblockerng/custom/redteam_block.txt"
-echo "3. Reload DNS Resolver or reboot pfSense."
+echo "✅ All done! Your pfBlockerNG is live with:"
+echo "- Discord and webhook blocking"
+echo "- Social media blacklisting"
+echo "- Red team infrastructure blocked"
+echo ""
+echo "👉 Visit Firewall > pfBlockerNG > DNSBL to verify the feeds were imported and are active."
