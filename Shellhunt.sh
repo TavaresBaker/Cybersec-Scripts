@@ -1,3 +1,5 @@
+good good
+
 #!/bin/sh
 # Clean ShellHunter - Reverse Shell Detection
 
