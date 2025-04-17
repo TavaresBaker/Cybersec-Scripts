@@ -124,9 +124,75 @@ else
   echo ">>> NAT redirect for DNS already exists. Skipping."
 fi
 
+echo ">>> Creating alias for Discord IP ranges..."
+pfSsh.php << EOF
+  \$alias = array();
+  \$alias['name'] = "Discord_IPs";
+  \$alias['type'] = "network";
+  \$alias['content'] = "185.45.32.0/22
+  185.45.33.0/24
+  185.45.34.0/22
+  185.45.35.0/22
+  185.45.36.0/24
+  185.45.37.0/24
+  185.45.38.0/24";
+  \$alias['descr'] = "Discord IP ranges for blocking";
+  \$config['aliases']['alias'][] = \$alias;
+  write_config("Added Discord IP ranges alias");
+EOF
+
+echo ">>> Blocking Discord IPs via firewall rules..."
+pfSsh.php << EOF
+  \$rule = array();
+  \$rule['interface'] = "lan";
+  \$rule['proto'] = "any";
+  \$rule['source'] = "Discord_IPs";
+  \$rule['destination'] = "any";
+  \$rule['action'] = "block";
+  \$rule['descr'] = "Block Discord IPs";
+  \$config['filter']['rule'][] = \$rule;
+  write_config("Created rule to block Discord IP ranges");
+EOF
+
+echo ">>> Blocking DoH (DNS over HTTPS) servers..."
+pfSsh.php << EOF
+  \$rule = array();
+  \$rule['interface'] = "lan";
+  \$rule['proto'] = "tcp";
+  \$rule['source'] = "any";
+  \$rule['destination'] = "1.1.1.1";
+  \$rule['destinationport'] = "443";
+  \$rule['action'] = "block";
+  \$rule['descr'] = "Block Cloudflare DoH";
+  \$config['filter']['rule'][] = \$rule;
+  
+  \$rule['destination'] = "8.8.8.8";
+  \$rule['descr'] = "Block Google DoH";
+  \$config['filter']['rule'][] = \$rule;
+
+  write_config("Blocked DNS over HTTPS servers");
+EOF
+
+echo ">>> Blocking WebSockets traffic (port 443 for Discord WebSocket connections)..."
+pfSsh.php << EOF
+  \$rule = array();
+  \$rule['interface'] = "lan";
+  \$rule['proto'] = "tcp";
+  \$rule['source'] = "any";
+  \$rule['destinationport'] = "443";
+  \$rule['destination'] = "Discord_IPs";
+  \$rule['action'] = "block";
+  \$rule['descr'] = "Block Discord WebSocket traffic";
+  \$config['filter']['rule'][] = \$rule;
+  write_config("Created rule to block Discord WebSocket traffic");
+EOF
+
+echo ">>> Reloading pfSense firewall rules..."
+pfctl -f /etc/pf.conf
+
 echo ">>> Scheduling daily pfBlockerNG update (3 AM)..."
 grep -q 'pfblockerng.sh update' /etc/crontab || echo "0 3 * * * root /usr/local/pkg/pfblockerng/pfblockerng.sh update" >> /etc/crontab
 
-echo "✅ Done! Discord is now blacklisted entirely."
-echo "👉 You can confirm by visiting https://discord.com from a client and verifying it fails."
+echo "✅ Done! Discord is now fully blocked at the router level, and all devices beneath it."
+echo "👉 You can confirm by visiting https://discord.com from any client, and it should fail."
 echo "👉 Make sure all LAN clients use pfSense for DNS (they will be forced to now)."
