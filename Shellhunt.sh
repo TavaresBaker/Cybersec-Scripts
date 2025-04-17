@@ -1,4 +1,4 @@
-old
+new
 
 #!/bin/sh
 # Clean ShellHunter - Reverse Shell Detection
@@ -16,7 +16,9 @@ ps aux | grep -E 'nc|netcat|bash|sh|python|perl|php|ruby|socat' | grep -v grep |
         proc_hits=1
     fi
 done
-[ "$proc_hits" -eq 0 ] && echo "[OK] No suspicious processes found."
+if [ "$proc_hits" -eq 0 ]; then
+    echo "[OK] No suspicious processes found."
+fi
 
 ### 2. Suspicious listening ports
 echo "[*] Checking for suspicious listening ports..."
@@ -25,7 +27,9 @@ netstat -an | grep -E 'LISTEN' | grep -E '(:4444|:1337|:1234|:9001|:2222|:8080)'
     echo "[Reverse Shell Port] $line"
     port_hits=1
 done
-[ "$port_hits" -eq 0 ] && echo "[OK] No suspicious ports found."
+if [ "$port_hits" -eq 0 ]; then
+    echo "[OK] No suspicious ports found."
+fi
 
 ### 3. Suspicious script contents
 echo "[*] Checking for suspicious script contents..."
@@ -38,7 +42,9 @@ for dir in /home /tmp /var/tmp; do
         script_hits=1
     done
 done
-[ "$script_hits" -eq 0 ] && echo "[OK] No suspicious script contents found."
+if [ "$script_hits" -eq 0 ]; then
+    echo "[OK] No suspicious script contents found."
+fi
 
 ### 4. Suspicious startup entries
 echo "[*] Checking for suspicious startup entries..."
@@ -49,6 +55,8 @@ find /etc/rc.d /usr/local/etc/rc.d ~/.config/autostart 2>/dev/null | while read 
         startup_hits=1
     fi
 done
-[ "$startup_hits" -eq 0 ] && echo "[OK] No suspicious startup entries found."
+if [ "$startup_hits" -eq 0 ]; then
+    echo "[OK] No suspicious startup entries found."
+fi
 
 echo "[✓] Scan complete."
