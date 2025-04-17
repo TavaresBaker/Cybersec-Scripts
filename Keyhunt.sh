@@ -1,30 +1,47 @@
 #!/bin/sh
 
-echo "Searching for SSH keys on pfSense..."
-
-# Common key filename patterns
-KEY_PATTERNS="id_rsa id_dsa id_ecdsa id_ed25519 authorized_keys known_hosts ssh_config"
+echo "Searching for SSH keys on pfSense (content-only scan)..."
 
 # Directories to search
 SEARCH_DIRS="/root /home /etc /usr /var /cf /tmp"
 
-# Find private/public key files by name
-echo "\n[*] Looking for key files by name..."
-for pattern in $KEY_PATTERNS; do
-    find $SEARCH_DIRS -type f -name "$pattern" -o -name "$pattern.pub" 2>/dev/null
-done
+# File size limit (to avoid huge binary files)
+MAXSIZE=1048576  # 1 MB
 
-# Find files containing "BEGIN RSA PRIVATE KEY", etc.
-echo "\n[*] Searching for content matching private/public key patterns..."
-grep -rslE "BEGIN (RSA|DSA|EC|OPENSSH) PRIVATE KEY" $SEARCH_DIRS 2>/dev/null
-grep -rslE "ssh-(rsa|dss|ed25519|ecdsa)" $SEARCH_DIRS 2>/dev/null
+# Temporary file to store results
+RESULTS="/tmp/ssh_key_search_results.txt"
+> "$RESULTS"
 
-# Find hidden files likely to be SSH keys
-echo "\n[*] Searching for hidden files that may contain SSH keys..."
-find $SEARCH_DIRS -type f -name ".*" -exec grep -lE "ssh-(rsa|dss|ed25519|ecdsa)|BEGIN .* PRIVATE KEY" {} \; 2>/dev/null
+# Function to scan file content for SSH key material
+scan_file() {
+    FILE="$1"
+    if [ -f "$FILE" ]; then
+        SIZE=$(stat -f%z "$FILE" 2>/dev/null)
+        if [ "$SIZE" -le "$MAXSIZE" ]; then
+            if grep -qE "BEGIN (RSA|DSA|EC|OPENSSH) PRIVATE KEY" "$FILE" || \
+               grep -qE "ssh-(rsa|dss|ed25519|ecdsa)" "$FILE"; then
+                echo "$FILE" >> "$RESULTS"
+            fi
+        fi
+    fi
+}
 
-# Optional: look for unusual file permissions (e.g., 600)
-echo "\n[*] Looking for files with 600 permissions..."
-find $SEARCH_DIRS -type f -perm 600 -exec grep -lE "PRIVATE KEY|ssh-" {} \; 2>/dev/null
+export -f scan_file
+export MAXSIZE
+export RESULTS
 
-echo "\n[+] SSH key search complete."
+# Scan all regular files
+find $SEARCH_DIRS -type f -exec sh -c 'scan_file "$0"' {} \;
+
+# Clear the screen before showing final results
+clear
+echo "=== SSH Key Scan Results ==="
+
+if [ -s "$RESULTS" ]; then
+    cat "$RESULTS"
+else
+    echo "No SSH keys found in file contents."
+fi
+
+# Optional: delete the results file
+# rm "$RESULTS"
