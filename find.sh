@@ -33,6 +33,7 @@ for USER in $ALL_USERS; do
 
     echo "  Groups: $GROUPS"
     echo "  Description: $DESC"
+    echo "  Defined in: $USER_XML"
     echo ""
 done
 
