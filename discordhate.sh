@@ -29,30 +29,62 @@ echo ">>> Creating required directories..."
 mkdir -p /usr/local/pkg/pfblockerng/custom
 mkdir -p /usr/local/pkg/pfblockerng/dnsblfeeds
 
-# ----- Create blocklists -----
-create_blocklist() {
-  local filename=$1
-  shift
-  printf "%s\n" "$@" > "/usr/local/pkg/pfblockerng/custom/${filename}.txt"
-}
-
-create_blocklist discord_block discord.com '*.discord.com' cdn.discordapp.com media.discordapp.net gateway.discord.gg discord.gg discordapp.com '*.discordapp.com' status.discord.com '*.status.discord.com' canary.discord.com ptb.discord.com
-create_blocklist social_block facebook.com fbcdn.net instagram.com twitter.com x.com t.co reddit.com tiktok.com snapchat.com pinterest.com linkedin.com tumblr.com
-create_blocklist redteam_block cobaltstrike.com bruteratel.com poshc2.uk empireproject.io veil-framework.com metasploit.com 0x00sec.org hackforums.net cracked.io
-create_blocklist telemetry_block google-analytics.com ssl.google-analytics.com www.google-analytics.com telemetry.microsoft.com telemetry.apple.com settings-win.data.microsoft.com s.youtube.com s.youtube-nocookie.com
-
-# ----- Create DNSBL feeds -----
-create_feed() {
-  cat <<EOF > "/usr/local/pkg/pfblockerng/dnsblfeeds/${1}_local.feed"
-[$2]
-file:///usr/local/pkg/pfblockerng/custom/${1}.txt|Custom_${2}|$3
+echo ">>> Creating aggressive Discord blocklist..."
+cat <<EOF > /usr/local/pkg/pfblockerng/custom/discord_block.txt
+discord.com
+*.discord.com
+cdn.discordapp.com
+media.discordapp.net
+gateway.discord.gg
+discord.gg
+discordapp.com
+*.discordapp.com
 EOF
-}
 
-create_feed discord_block "Discord Blocklist" "Block all Discord domains completely"
-create_feed social_block "Social Media Blocklist" "Block social media"
-create_feed redteam_block "Red Team Tools Blocklist" "Block known offensive security infrastructure"
-create_feed telemetry_block "Telemetry Blocklist" "Block telemetry domains"
+echo ">>> Creating social media blocklist..."
+cat <<EOF > /usr/local/pkg/pfblockerng/custom/social_block.txt
+facebook.com
+fbcdn.net
+instagram.com
+twitter.com
+x.com
+t.co
+reddit.com
+tiktok.com
+snapchat.com
+pinterest.com
+linkedin.com
+tumblr.com
+EOF
+
+echo ">>> Creating red team tools blocklist..."
+cat <<EOF > /usr/local/pkg/pfblockerng/custom/redteam_block.txt
+cobaltstrike.com
+bruteratel.com
+poshc2.uk
+empireproject.io
+veil-framework.com
+metasploit.com
+0x00sec.org
+hackforums.net
+cracked.io
+EOF
+
+echo ">>> Registering feeds in pfBlockerNG..."
+cat <<EOF > /usr/local/pkg/pfblockerng/dnsblfeeds/discord_local.feed
+[Discord Blocklist]
+file:///usr/local/pkg/pfblockerng/custom/discord_block.txt|Custom_Discord|Block all Discord domains completely
+EOF
+
+cat <<EOF > /usr/local/pkg/pfblockerng/dnsblfeeds/social_local.feed
+[Social Media Blocklist]
+file:///usr/local/pkg/pfblockerng/custom/social_block.txt|Custom_Social|Block social media
+EOF
+
+cat <<EOF > /usr/local/pkg/pfblockerng/dnsblfeeds/redteam_local.feed
+[Red Team Tools Blocklist]
+file:///usr/local/pkg/pfblockerng/custom/redteam_block.txt|Custom_RedTeam|Block known offensive security infrastructure
+EOF
 
 echo ">>> Applying pfBlockerNG update..."
 /usr/local/pkg/pfblockerng/pfblockerng.sh update
@@ -60,106 +92,107 @@ echo ">>> Applying pfBlockerNG update..."
 echo ">>> Restarting Unbound DNS Resolver..."
 pfSsh.php playback svc restart unbound
 
-# ----- Create NAT rule to redirect DNS -----
 echo ">>> Creating firewall NAT rule to force DNS through pfSense..."
-if ! pfctl -sn | grep -q "Redirect DNS to pfSense"; then
-  pfSsh.php <<EOF
-  require_once("guiconfig.inc");
-  require_once("util.inc");
-  require_once("filter.inc");
-  \$config = config_read_array('nat', 'rule');
-  \$nat = array(
-    'interface' => 'lan',
-    'protocol' => 'tcp/udp',
-    'src' => array('type' => 'network', 'address' => 'lan'),
-    'dst' => array('type' => 'any'),
-    'dstport' => '53',
-    'target' => '127.0.0.1',
-    'local-port' => '53',
-    'natport' => '53',
-    'descr' => 'Redirect DNS to pfSense',
-    'top' => true
-  );
+
+pfctl -sr | grep "Redirect DNS to pfSense" >/dev/null 2>&1
+if [ $? -ne 0 ]; then
+  pfSsh.php << EOF
+  \$nat = array();
+  \$nat['interface'] = "lan";
+  \$nat['protocol'] = "tcp/udp";
+  \$nat['src'] = array('type' => 'network', 'address' => "lan");
+  \$nat['dst'] = array('type' => 'any');
+  \$nat['dstport'] = "53";
+  \$nat['target'] = "\$interface_ip";
+  \$nat['local-port'] = "53";
+  \$nat['descr'] = "Redirect DNS to pfSense";
+  \$nat['natport'] = "53";
+  \$nat['associated-rule-id'] = "";
+  \$nat['top'] = true;
+  \$nat['apply'] = true;
+  \$nat['nordr'] = false;
+  \$nat['disabled'] = false;
+  \$nat['interface'] = "lan";
+
   \$config['nat']['rule'][] = \$nat;
   write_config("Added NAT redirect rule for DNS");
-EOF
+  EOF
+
+  echo ">>> Reloading NAT rules..."
   pfctl -f /etc/pf.conf
 else
-  echo ">>> NAT rule already exists. Skipping."
+  echo ">>> NAT redirect for DNS already exists. Skipping."
 fi
 
-# ----- Create alias for Discord IPs -----
 echo ">>> Creating alias for Discord IP ranges..."
-pfSsh.php <<EOF
-require_once("guiconfig.inc");
-\$config = config_read_array('aliases', 'alias');
-\$config['aliases']['alias'][] = array(
-  'name' => 'Discord_IPs',
-  'type' => 'network',
-  'address' => '185.45.32.0/22 185.45.33.0/24 185.45.34.0/22 185.45.35.0/22 185.45.36.0/24 185.45.37.0/24 185.45.38.0/24',
-  'descr' => 'Discord IP ranges for blocking'
-);
-write_config("Added Discord IP ranges alias");
+pfSsh.php << EOF
+  \$alias = array();
+  \$alias['name'] = "Discord_IPs";
+  \$alias['type'] = "network";
+  \$alias['content'] = "185.45.32.0/22
+  185.45.33.0/24
+  185.45.34.0/22
+  185.45.35.0/22
+  185.45.36.0/24
+  185.45.37.0/24
+  185.45.38.0/24";
+  \$alias['descr'] = "Discord IP ranges for blocking";
+  \$config['aliases']['alias'][] = \$alias;
+  write_config("Added Discord IP ranges alias");
 EOF
 
-# ----- Block Discord IPs -----
-echo ">>> Blocking Discord IPs..."
-pfSsh.php <<EOF
-require_once("guiconfig.inc");
-\$config = config_read_array('filter', 'rule');
-\$config['filter']['rule'][] = array(
-  'interface' => 'lan',
-  'proto' => 'any',
-  'source' => 'any',
-  'destination' => 'Discord_IPs',
-  'action' => 'block',
-  'descr' => 'Block Discord IPs'
-);
-write_config("Blocked Discord IPs");
+echo ">>> Blocking Discord IPs via firewall rules..."
+pfSsh.php << EOF
+  \$rule = array();
+  \$rule['interface'] = "lan";
+  \$rule['proto'] = "any";
+  \$rule['source'] = "Discord_IPs";
+  \$rule['destination'] = "any";
+  \$rule['action'] = "block";
+  \$rule['descr'] = "Block Discord IPs";
+  \$config['filter']['rule'][] = \$rule;
+  write_config("Created rule to block Discord IP ranges");
 EOF
 
-# ----- Block DoH -----
-echo ">>> Blocking DNS over HTTPS (DoH) servers..."
-pfSsh.php <<EOF
-require_once("guiconfig.inc");
-\$config = config_read_array('filter', 'rule');
-\$doh_ips = array("1.1.1.1", "8.8.8.8", "9.9.9.9", "94.140.14.14", "208.67.222.222");
-foreach (\$doh_ips as \$ip) {
-  \$config['filter']['rule'][] = array(
-    'interface' => 'lan',
-    'proto' => 'tcp',
-    'source' => 'any',
-    'destination' => \$ip,
-    'destinationport' => '443',
-    'action' => 'block',
-    'descr' => "Block DoH to \$ip"
-  );
-}
-write_config("Blocked DoH servers");
+echo ">>> Blocking DoH (DNS over HTTPS) servers..."
+pfSsh.php << EOF
+  \$rule = array();
+  \$rule['interface'] = "lan";
+  \$rule['proto'] = "tcp";
+  \$rule['source'] = "any";
+  \$rule['destination'] = "1.1.1.1";
+  \$rule['destinationport'] = "443";
+  \$rule['action'] = "block";
+  \$rule['descr'] = "Block Cloudflare DoH";
+  \$config['filter']['rule'][] = \$rule;
+  
+  \$rule['destination'] = "8.8.8.8";
+  \$rule['descr'] = "Block Google DoH";
+  \$config['filter']['rule'][] = \$rule;
+
+  write_config("Blocked DNS over HTTPS servers");
 EOF
 
-# ----- Block Discord WebSockets -----
-echo ">>> Blocking Discord WebSocket traffic..."
-pfSsh.php <<EOF
-require_once("guiconfig.inc");
-\$config = config_read_array('filter', 'rule');
-\$config['filter']['rule'][] = array(
-  'interface' => 'lan',
-  'proto' => 'tcp',
-  'source' => 'any',
-  'destination' => 'Discord_IPs',
-  'destinationport' => '443',
-  'action' => 'block',
-  'descr' => 'Block Discord WebSocket traffic'
-);
-write_config("Blocked Discord WebSocket traffic");
+echo ">>> Blocking WebSockets traffic (port 443 for Discord WebSocket connections)..."
+pfSsh.php << EOF
+  \$rule = array();
+  \$rule['interface'] = "lan";
+  \$rule['proto'] = "tcp";
+  \$rule['source'] = "any";
+  \$rule['destinationport'] = "443";
+  \$rule['destination'] = "Discord_IPs";
+  \$rule['action'] = "block";
+  \$rule['descr'] = "Block Discord WebSocket traffic";
+  \$config['filter']['rule'][] = \$rule;
+  write_config("Created rule to block Discord WebSocket traffic");
 EOF
 
 echo ">>> Reloading pfSense firewall rules..."
 pfctl -f /etc/pf.conf
 
-# ----- Cron job for daily updates -----
 echo ">>> Scheduling daily pfBlockerNG update (3 AM)..."
 grep -q 'pfblockerng.sh update' /etc/crontab || echo "0 3 * * * root /usr/local/pkg/pfblockerng/pfblockerng.sh update" >> /etc/crontab
 
-echo "✅ Job’s finished. All protections deployed and active."
+echo "✅ Done! Discord is now fully blocked at the router level, and all devices beneath it."
+echo "👉 You can confirm by visiting https://discord.com from any client, and it should fail."
+echo "👉 Make sure all LAN clients use pfSense for DNS (they will be forced to now)."
