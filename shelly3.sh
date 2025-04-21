@@ -56,14 +56,16 @@ echo ""
 ### 4. Suspicious startup entries
 echo "${YELLOW}[4/4] Checking for suspicious startup entries...${NC}"
 startup_hits=0
-startup_dirs="/etc/rc.d /usr/local/etc/rc.d ~/.config/autostart"
+startup_dirs="/etc/rc.d /usr/local/etc/rc.d ~/.config/autostart /etc/init.d /etc/systemd/system"
 for path in $startup_dirs; do
-    find $path -type f 2>/dev/null | while read -r startup; do
-        if grep -qEi '\b(nc|python|perl|php|ruby|socat)\b' "$startup"; then
-            echo "${RED}$startup${NC}"  # Only display the startup file path
-            startup_hits=1
-        fi
-    done
+    if [ -d "$path" ]; then
+        find "$path" -type f 2>/dev/null | while read -r startup; do
+            if grep -qEi '\b(nc|python|perl|php|ruby|socat|bash|sh)\b' "$startup"; then
+                echo "${RED}$startup${NC}"  # Only display the startup file path
+                startup_hits=1
+            fi
+        done
+    fi
 done
 [ "$startup_hits" -eq 0 ] && echo "${GREEN}[OK] No suspicious startup entries found.${NC}"
 echo ""
