@@ -110,10 +110,9 @@ else
   echo "[✔] No files failed to restore."
 fi
 
-# Option to list non-native users and delete if necessary
-list_and_delete_users() {
-  # pfSense - List Non-Native Users with Delete Option
+# pfSense - List Non-Native Users with Delete Option
 
+list_and_delete_users() {
   # Default system users to ignore
   DEFAULT_USERS="admin"
 
@@ -199,6 +198,9 @@ case "$OPTION" in
     ;;
   2)
     # Run the main restore process
+    restore_file "/etc/rc.initial" "/etc/rc.initial"
+    restore_file "/etc/inc/config.inc" "/etc/inc/config.inc"
+    restore_file "/etc/inc/auth.inc" "/etc/inc/auth.inc"
     ;;
   10)
     # Enter shell for safety and redundancy
