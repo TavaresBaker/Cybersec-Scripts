@@ -25,7 +25,11 @@ echo ""
 ### 2. Suspicious listening ports
 echo "${YELLOW}[2/4] Checking for suspicious listening ports...${NC}"
 while read -r line; do
-    echo "${RED}[Reverse Shell Port] $line${NC}"
+    # Capture the local address and the program name/command
+    port=$(echo "$line" | awk '{print $4}' | cut -d: -f2)
+    if [[ $port =~ ^(4444|1337|1234|9001|2222|8080)$ ]]; then
+        echo "${RED}[Reverse Shell Port] Port: $port - $line${NC}"
+    fi
 done <<EOF
 $(netstat -tunlp 2>/dev/null | grep -E '(:4444|:1337|:1234|:9001|:2222|:8080)')
 EOF
