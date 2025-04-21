@@ -1,3 +1,8 @@
+CUSTOM="/etc/rc.initial"
+
+# Make sure the file is writable and backup the original just in case
+cp "$CUSTOM" "${CUSTOM}.bak"
+
 cat > "$CUSTOM" << 'EOF'
 #!/bin/sh
 # Custom rc.initial (reskinned)
@@ -61,8 +66,8 @@ while true; do
             /tmp/find_suspecious_processes.sh
             ;;
 
-        7) ;;  # Placeholder
-        8) ;;  # Placeholder
+        7) ;;
+        8) ;;
 
         9)
             echo "[*] Disabling web console..."
@@ -74,3 +79,6 @@ while true; do
     esac
 done
 EOF
+
+# Make it executable
+chmod +x "$CUSTOM"
