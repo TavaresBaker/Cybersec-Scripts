@@ -1,9 +1,10 @@
-CUSTOM="/etc/rc.initial"
+#!/bin/sh
 
-# Make sure the file is writable and backup the original just in case
-cp "$CUSTOM" "${CUSTOM}.bak"
+echo "[*] Backing up original /etc/rc.initial..."
+cp /etc/rc.initial /etc/rc.initial.bak 2>/dev/null
 
-cat > "$CUSTOM" << 'EOF'
+echo "[*] Writing new reskinned rc.initial menu..."
+cat > /etc/rc.initial << 'EOF'
 #!/bin/sh
 # Custom rc.initial (reskinned)
 
@@ -30,12 +31,14 @@ while true; do
     echo ""
 
     case "$option" in
-        1) /usr/local/bin/php -f /etc/rc.initial.toggle_sshd ;;
+        1)
+            /usr/local/bin/php -f /etc/rc.initial.toggle_sshd
+            ;;
 
         2)
             read -p "Enter new admin password: " new_pass
             echo "admin:$new_pass" | chpasswd
-            echo "Admin password changed successfully."
+            echo "[✓] Admin password changed."
             ;;
 
         3)
@@ -75,10 +78,14 @@ while true; do
             echo "[✓] Web console stopped."
             ;;
 
-        *) echo "Invalid option. Please choose 1–9." ;;
+        *)
+            echo "Invalid option. Please choose 1–9."
+            ;;
     esac
 done
 EOF
 
-# Make it executable
-chmod +x "$CUSTOM"
+echo "[*] Setting executable permissions on /etc/rc.initial..."
+chmod +x /etc/rc.initial
+
+echo "[✓] Custom rc.initial is now ready. Run it with: /etc/rc.initial"
