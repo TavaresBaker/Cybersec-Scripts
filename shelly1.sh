@@ -27,7 +27,7 @@ echo "${YELLOW}[2/4] Checking for suspicious listening ports...${NC}"
 while read -r line; do
     # Capture the local address and the program name/command
     port=$(echo "$line" | awk '{print $4}' | cut -d: -f2)
-    if [[ $port =~ ^(4444|1337|1234|9001|2222|8080)$ ]]; then
+    if echo "$port" | grep -Eq '^(4444|1337|1234|9001|2222|8080)$'; then
         echo "${RED}[Reverse Shell Port] Port: $port - $line${NC}"
     fi
 done <<EOF
