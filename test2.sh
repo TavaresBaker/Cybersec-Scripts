@@ -1,10 +1,6 @@
 #!/bin/sh
 
-# Ensure xmlstarlet is installed
-if ! command -v xmlstarlet >/dev/null 2>&1; then
-  echo "This script requires xmlstarlet. Please install it first."
-  exit 1
-fi
+# pfSense - Safe Non-Native User Deletion Script
 
 DEFAULT_USERS="admin"
 USER_XML="/conf/config.xml"
@@ -13,7 +9,8 @@ BACKUP_XML="/conf/config.xml.bak"
 echo "===[ pfSense Non-Native Users Report ]==="
 echo ""
 
-ALL_USERS=$(xmlstarlet sel -t -m "//user" -v "name" -n "$USER_XML")
+# Extract all users
+ALL_USERS=$(xmllint --xpath '//user/name/text()' "$USER_XML" 2>/dev/null)
 
 USER_LIST=""
 INDEX=1
@@ -26,15 +23,14 @@ for USER in $ALL_USERS; do
 
     echo "$INDEX) Username: $USER"
 
-    GROUPS=$(xmlstarlet sel -t -m "//user[name='$USER']/groups/item" -v "." -o " " "$USER_XML")
+    GROUPS=$(xmllint --xpath "string(//user[name='$USER']/groups/item)" "$USER_XML" 2>/dev/null)
     [ -z "$GROUPS" ] && GROUPS="(none)"
 
-    DESC=$(xmlstarlet sel -t -v "//user[name='$USER']/descr" "$USER_XML")
+    DESC=$(xmllint --xpath "string(//user[name='$USER']/descr)" "$USER_XML" 2>/dev/null)
     [ -z "$DESC" ] && DESC="(no description)"
 
     echo "   Groups: $GROUPS"
     echo "   Description: $DESC"
-    echo "   Defined in: $USER_XML"
     echo ""
 
     USER_LIST="$USER_LIST$USER\n"
@@ -53,16 +49,39 @@ if [ -n "$USER_NUMBER" ] && echo "$USER_NUMBER" | grep -qE '^[0-9]+$'; then
     fi
 
     echo "Selected user for deletion: $DELETE_USER"
-    echo "Backing up config to $BACKUP_XML"
+
+    echo "Backing up current config to $BACKUP_XML..."
     cp "$USER_XML" "$BACKUP_XML"
 
-    echo "Removing user '$DELETE_USER' from config..."
-    xmlstarlet ed -L -d "//user[name='$DELETE_USER']" "$USER_XML"
+    echo "Removing user '$DELETE_USER'..."
+
+    # Escape special regex characters in username
+    ESCAPED_USER=$(printf '%s\n' "$DELETE_USER" | sed 's/[][\.*^$(){}?+|/]/\\&/g')
+
+    # Delete only the <user> block with <name> matching the selected username
+    awk -v user="$ESCAPED_USER" '
+    BEGIN { inside = 0 }
+    {
+        if ($0 ~ /<user>/) { block = ""; inside = 1 }
+        if (inside) { block = block $0 ORS }
+        if ($0 ~ /<\/user>/ && inside) {
+            if (block ~ "<name>" user "</name>") {
+                # skip this block (don’t print)
+                inside = 0
+                next
+            } else {
+                printf "%s", block
+                inside = 0
+                next
+            }
+        }
+        if (!inside) print
+    }' "$BACKUP_XML" > "$USER_XML"
 
     echo "Reloading pfSense config..."
     /etc/rc.reload_all
 
-    echo "User '$DELETE_USER' deleted and configuration reloaded."
+    echo "User '$DELETE_USER' successfully removed and config reloaded."
 else
     echo "No user deleted."
 fi
