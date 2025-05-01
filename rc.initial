@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Minimal rc.initial
+# SenseSation rc.initial
 #
 
 # ASCII Art
@@ -13,15 +13,27 @@ cat << 'EOF'
 EOF
 
 # Only offer a basic shell option
-echo
+
+
+
+#Console Menu
+
+echo " 8) Find Suspecious Processes"
+echo " 7) Nuke Web Console"
+echo " 6) Find Added Users"
+echo " 5) Find Points of Entry"
+echo " 4) Deploy PFBlocker"
+echo " 3) Find Webhooks"
+echo " 2) Restore Files"
 echo " 1) Shell"
 echo " 0) Exit"
 echo
 
-read -p "Enter an option: " opmode
+read -p "Count upward: " opmode
 echo
 
 case ${opmode} in
+
 1)
 	/bin/sh
 	;;
