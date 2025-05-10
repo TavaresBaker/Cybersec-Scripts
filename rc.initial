@@ -94,7 +94,7 @@ case ${opmode} in
 	;;
 
 7)
-	/root/SenseSation/Scripts/nuke_GUI.sh
+	/root/SenseSation/Scripts/nuke_gui.sh
 	;;
 
 6)
