@@ -1,20 +1,30 @@
 #!/bin/sh
 
-# Ask for IP address to allow
+CONFIG="/conf/config.xml"
+BACKUP="/conf/config.xml.backup.$(date +%Y%m%d%H%M%S)"
+TMP_CONFIG="/tmp/config.xml.tmp"
+
+echo "Backing up current config to $BACKUP ..."
+cp "$CONFIG" "$BACKUP"
+if [ $? -ne 0 ]; then
+  echo "Failed to backup config. Aborting."
+  exit 1
+fi
+
+# Ask user for the allowed LAN IP
 echo -n "Enter the LAN IP address to allow firewall access (e.g., 192.168.1.2): "
 read ALLOWED_IP
 
-# Sanitize input with a simple regex (IPv4 check)
+# Basic IP validation
 if ! echo "$ALLOWED_IP" | grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}$'; then
   echo "Invalid IP address format. Exiting."
   exit 1
 fi
 
-# Get current epoch time
+# Prepare rules XML snippet to inject (timestamps to avoid collisions)
 now=$(date +%s)
 
-# Generate XML rules
-cat <<EOF > /tmp/custom_fw_rules.xml
+RULES=$(cat <<EOF
 <rule>
   <tracker>$now</tracker>
   <type>block</type>
@@ -51,5 +61,35 @@ cat <<EOF > /tmp/custom_fw_rules.xml
   <descr><![CDATA[Block management access on the DMZ]]></descr>
 </rule>
 EOF
+)
 
-echo "Firewall rules have been generated in /tmp/custom_fw_rules.xml"
+# Insert the rules inside the <filter> section before the closing </filter> tag
+# Using awk to preserve formatting and inject rules
+
+awk -v rules="$RULES" '
+  /<\/filter>/ {
+    print rules
+  }
+  { print }
+' "$CONFIG" > "$TMP_CONFIG"
+
+if [ $? -ne 0 ]; then
+  echo "Failed to insert rules into config. Aborting."
+  exit 1
+fi
+
+# Overwrite original config.xml with modified version
+mv "$TMP_CONFIG" "$CONFIG"
+
+echo "Config updated. Reloading firewall rules..."
+
+# Reload firewall rules for changes to take effect
+/etc/rc.filter_configure
+
+if [ $? -eq 0 ]; then
+  echo "Firewall rules reloaded successfully."
+else
+  echo "Failed to reload firewall rules. Check pfSense logs."
+fi
+
+exit 0
